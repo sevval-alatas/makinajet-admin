@@ -54,37 +54,3 @@ export function isJwtAdmin(token) {
   const role = extractRoleFromPayload(payload)
   return String(role) === 'Admin' || String(role).toLowerCase() === 'admin'
 }
-
-/**
- * Backend çevrimdışı olduğunda veya demo modunda gerçek formatta (Header.Payload.Signature)
- * Role == Admin içeren JWT üretir.
- */
-export function createMockAdminJwt({
-  email = 'admin@makinajet.com',
-  name = 'Burak Yılmaz',
-  hours = 8
-} = {}) {
-  const header = { alg: 'HS256', typ: 'JWT' }
-  const nowSec = Math.floor(Date.now() / 1000)
-  const payload = {
-    sub: 'admin-001',
-    email,
-    unique_name: name,
-    name,
-    Role: 'Admin',
-    role: 'Admin',
-    'http://schemas.microsoft.com/ws/2008/06/identity/claims/role': 'Admin',
-    iat: nowSec,
-    exp: nowSec + hours * 3600,
-    iss: 'MakinaJet.Api',
-    aud: 'MakinaJet.AdminPortal'
-  }
-
-  const encode = (obj) =>
-    btoa(unescape(encodeURIComponent(JSON.stringify(obj))))
-      .replace(/=/g, '')
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_')
-
-  return `${encode(header)}.${encode(payload)}.makinajet_v24_signature`
-}

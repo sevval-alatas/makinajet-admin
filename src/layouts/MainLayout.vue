@@ -5,7 +5,7 @@
       <!-- Üst Logo & ADMIN Rozeti -->
       <div class="sidebar-brand">
         <MakinaJetLogo size="sm" />
-        <span class="admin-pill">ADMIN</span>
+        <!-- <span class="admin-pill">ADMIN</span> -->
       </div>
 
       <!-- Yönetici Profil Kartı -->
@@ -17,7 +17,7 @@
           <span class="online-dot"></span>
         </div>
         <div class="profile-info">
-          <div class="profile-name">{{ authStore.user?.name || 'Burak Yılmaz' }}</div>
+          <div class="profile-name">{{ authStore.user?.name || 'Sistem Yöneticisi' }}</div>
           <div class="profile-role">Süper Yönetici (Role == {{ authStore.currentRole || 'Admin' }})</div>
         </div>
         <button
@@ -48,13 +48,38 @@
         </router-link>
 
         <router-link
+          to="/stores"
+          class="nav-item"
+          :class="{ 'nav-item--active': route.path.startsWith('/stores') }"
+        >
+          <div class="nav-item-left">
+            <q-icon name="storefront" size="19px" class="nav-icon" />
+            <span>Mağaza Onayları</span>
+          </div>
+          <span v-if="pendingStoresBadgeCount > 0" class="nav-badge">
+            {{ pendingStoresBadgeCount }}
+          </span>
+        </router-link>
+
+        <router-link
+          to="/listings"
+          class="nav-item"
+          :class="{ 'nav-item--active': route.path.startsWith('/listings') }"
+        >
+          <div class="nav-item-left">
+            <q-icon name="inventory_2" size="19px" class="nav-icon" />
+            <span>Tüm İlanlar</span>
+          </div>
+        </router-link>
+
+        <router-link
           to="/settings"
           class="nav-item"
           :class="{ 'nav-item--active': route.path === '/settings' && !route.query.section }"
         >
           <div class="nav-item-left">
             <q-icon name="tune" size="19px" class="nav-icon" />
-            <span>Kategori, Banner & Kredi</span>
+            <span>Kategori, Banner & Fiyatlar</span>
           </div>
         </router-link>
 
@@ -64,8 +89,8 @@
           :class="{ 'nav-item--active': route.path === '/settings' && route.query.section === 'credits' }"
         >
           <div class="nav-item-left">
-            <q-icon name="Generating_tokens" size="18px" class="nav-icon" />
-            <span>Kredi & Vitrin Ücretleri</span>
+            <q-icon name="paid" size="19px" class="nav-icon" />
+            <span>Doping & Vitrin Ücretleri (TL)</span>
           </div>
         </router-link>
 
@@ -77,8 +102,8 @@
           :class="{ 'nav-item--active': route.path === '/users' }"
         >
           <div class="nav-item-left">
-            <q-icon name="group" size="19px" class="nav-icon" />
-            <span>Kullanıcı Yönetimi</span>
+            <q-icon name="storefront" size="19px" class="nav-icon" />
+            <span>Mağaza & Kullanıcılar</span>
           </div>
         </router-link>
 
@@ -101,6 +126,17 @@
           <div class="nav-item-left">
             <q-icon name="analytics" size="19px" class="nav-icon" />
             <span>Pazaryeri Raporları</span>
+          </div>
+        </router-link>
+
+        <router-link
+          to="/change-password"
+          class="nav-item"
+          :class="{ 'nav-item--active': route.path === '/change-password' }"
+        >
+          <div class="nav-item-left">
+            <q-icon name="lock_reset" size="19px" class="nav-icon" />
+            <span>Şifre Değiştir</span>
           </div>
         </router-link>
       </nav>
@@ -194,12 +230,13 @@
 </template>
 
 <script setup>
-import { computed, ref, onMounted } from 'vue'
+import { computed, ref, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useQuasar } from 'quasar'
 import MakinaJetLogo from '@/components/MakinaJetLogo.vue'
 import { useAuthStore } from '@/stores/authStore'
 import { useModerationStore } from '@/stores/moderationStore'
+import { apiClient } from '@/services/api'
 
 const route = useRoute()
 const router = useRouter()
@@ -210,9 +247,32 @@ const moderationStore = useModerationStore()
 const showJwtModal = ref(false)
 const editableBearerToken = ref('')
 const verifyingToken = ref(false)
+const pendingStoresBadgeCount = ref(0)
+
+async function refreshPendingStoresBadge() {
+  if (!authStore.token) return
+  try {
+    const res = await apiClient.get('/admin/stores', {
+      params: { status: 'Pending' }
+    })
+    const list = res.data?.items || res.data?.data || res.data
+    if (Array.isArray(list)) {
+      pendingStoresBadgeCount.value = list.length
+    }
+  } catch {
+    // ignore
+  }
+}
+
+watch(
+  () => route.path,
+  () => {
+    refreshPendingStoresBadge()
+  }
+)
 
 const userInitials = computed(() => {
-  const name = authStore.user?.name || 'Burak Yılmaz'
+  const name = authStore.user?.name || 'Sistem Yöneticisi'
   return name
     .split(' ')
     .map((n) => n[0])
@@ -222,12 +282,16 @@ const userInitials = computed(() => {
 })
 
 onMounted(async () => {
-  // Oturum açıldığında /api/auth/me ile kullanıcı bilgilerini senkronize etmeyi dene
-  if (authStore.token && !authStore.token.endsWith('makinajet_v24_signature')) {
+  // Oturum açıldığında /api/auth/me ile kullanıcı bilgilerini senkronize et
+  if (authStore.token) {
+    refreshPendingStoresBadge()
     try {
       const me = await authStore.fetchMe()
       if (me?.fullName || me?.name) {
-        authStore.user.name = me.fullName || me.name
+        authStore.user = {
+          ...authStore.user,
+          name: me.fullName || me.name
+        }
       }
     } catch {
       // ignore

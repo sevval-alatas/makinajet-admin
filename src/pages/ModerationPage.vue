@@ -64,7 +64,20 @@
           <span class="notif-dot"></span>
           <q-menu anchor="bottom right" self="top right">
             <div class="q-pa-md" style="width: 310px">
-              <div class="text-subtitle2 text-weight-bold q-mb-sm">Son Moderasyon İşlemleri</div>
+              <div class="row items-center justify-between q-mb-sm">
+                <div class="text-subtitle2 text-weight-bold">Son Moderasyon İşlemleri</div>
+                <q-btn
+                  flat
+                  dense
+                  no-caps
+                  size="sm"
+                  color="negative"
+                  icon="delete_sweep"
+                  label="Temizle"
+                  :disable="moderationStore.actionHistory.length === 0"
+                  @click="confirmClearNotifications"
+                />
+              </div>
               <div v-if="moderationStore.actionHistory.length === 0" class="text-caption text-grey-6">
                 Bu oturumda henüz onay/ret işlemi yapılmadı.
               </div>
@@ -104,17 +117,18 @@
 
         <div v-if="moderationStore.filteredListings.length === 0" class="empty-queue-box mj-card">
           <q-icon name="task_alt" size="42px" color="positive" />
-          <div class="text-subtitle1 text-weight-bold q-mt-sm">Kuyrukta İlan Kalmadı</div>
+          <div class="text-subtitle1 text-weight-bold q-mt-sm">Kuyrukta İlan Bulunmuyor</div>
           <p class="text-caption text-grey-6 q-mb-md">
-            Onay bekleyen tüm ilanları incelediniz veya arama kriterine uygun ilan bulunamadı.
+            Onay bekleyen tüm ilanlar incelendi veya arama kriterine uygun ilan bulunamadı.
           </p>
           <q-btn
             unelevated
             color="primary"
             no-caps
             icon="refresh"
-            label="Demo Kuyruğunu Yeniden Yükle"
-            @click="moderationStore.fetchPendingListings(true)"
+            label="Sunucudan Yenile"
+            :loading="moderationStore.loading"
+            @click="moderationStore.fetchPendingListings()"
           />
         </div>
 
@@ -129,7 +143,15 @@
             <span v-if="selectedItem?.id === item.id" class="active-corner-dot"></span>
 
             <div class="queue-card-thumb">
-              <img :src="item.thumbnail" :alt="item.title" />
+              <img
+                v-if="item.thumbnail && !isImageBroken(`thumb-${item.id}`)"
+                :src="item.thumbnail"
+                :alt="item.title"
+                @error="markImageBroken(`thumb-${item.id}`)"
+              />
+              <div v-else class="thumb-fallback">
+                <q-icon name="image_not_supported" size="22px" class="thumb-fallback-icon" />
+              </div>
             </div>
 
             <div class="queue-card-content">
@@ -207,7 +229,7 @@
 
         <div class="detail-divider"></div>
 
-        <!-- Yüklenen Makine Fotoğrafları (4 Adet) -->
+        <!-- Yüklenen Makine Fotoğrafları -->
         <div class="photos-section">
           <div class="photos-header">
             <div class="photos-title-wrap">
@@ -216,10 +238,18 @@
                 Yüklenen Makine Fotoğrafları ({{ selectedItem.photos.length }} Adet)
               </span>
             </div>
-            <span class="photos-hint">Büyütmek ve kaliteyi kontrol etmek için tıklayın</span>
+            <span v-if="selectedItem.photos.length > 0" class="photos-hint">
+              Büyütmek ve kaliteyi kontrol etmek için tıklayın
+            </span>
           </div>
 
-          <div class="photos-grid">
+          <div v-if="selectedItem.photos.length === 0" class="no-photos-box">
+            <q-icon name="hide_image" size="30px" class="no-photos-icon" />
+            <div class="no-photos-title">Fotoğraf Yüklenmemiş</div>
+            <div class="no-photos-sub">Satıcı bu ilan için henüz makine fotoğrafı eklememiş.</div>
+          </div>
+
+          <div v-else class="photos-grid">
             <div
               v-for="(photo, idx) in selectedItem.photos"
               :key="photo.id"
@@ -227,7 +257,17 @@
               :class="{ 'photo-card--cover': idx === 0 }"
               @click="openLightbox(idx)"
             >
-              <img :src="photo.url" :alt="photo.title" class="photo-img" />
+              <img
+                v-if="photo.url && !isImageBroken(`photo-${selectedItem.id}-${photo.id}`)"
+                :src="photo.url"
+                :alt="photo.title"
+                class="photo-img"
+                @error="markImageBroken(`photo-${selectedItem.id}-${photo.id}`)"
+              />
+              <div v-else class="photo-fallback">
+                <q-icon name="broken_image" size="28px" class="photo-fallback-icon" />
+                <span class="photo-fallback-text">Görsel Yüklenemedi</span>
+              </div>
 
               <span v-if="photo.topBadge" class="photo-top-badge">
                 {{ photo.topBadge }}
@@ -237,7 +277,10 @@
                 {{ photo.label }}
               </span>
 
-              <div class="photo-hover-overlay">
+              <div
+                v-if="photo.url && !isImageBroken(`photo-${selectedItem.id}-${photo.id}`)"
+                class="photo-hover-overlay"
+              >
                 <q-icon name="zoom_in" size="26px" color="white" />
               </div>
             </div>
@@ -364,7 +407,7 @@
               <input
                 v-model="rejectCustomNote"
                 type="text"
-                placeholder="Makine tablasının ve seri numarasının net fotoğrafını ekleyiniz..."
+                placeholder="Ek açıklama veya düzeltme notu girin..."
                 class="rejection-note-input"
                 @keyup.enter="handleReject(selectedItem)"
               />
@@ -379,6 +422,17 @@
             </button>
           </div>
         </div>
+      </section>
+
+      <!-- Sağ Sütun: Seçili İlan Yoksa Boş Durum -->
+      <section v-else class="detail-column mj-card empty-detail-box">
+        <q-icon name="fact_check" size="48px" color="grey-5" />
+        <div class="text-subtitle1 text-weight-bold text-grey-8 q-mt-sm">
+          İncelenecek İlan Seçilmedi
+        </div>
+        <p class="text-caption text-grey-6 q-mb-none">
+          Sol kuyruktan onay bekleyen bir ilan seçtiğinizde fotoğrafları, satıcı doğrulaması ve moderasyon aksiyonları burada görüntülenecektir.
+        </p>
       </section>
     </div>
 
@@ -419,7 +473,17 @@
               @click="prevPhoto"
             />
             <div class="lightbox-img-holder" :class="{ 'lightbox-img-holder--zoomed': zoomed }">
-              <img :src="currentPhoto.url" :alt="currentPhoto.title" @click="zoomed = !zoomed" />
+              <img
+                v-if="currentPhoto.url && !isImageBroken(`photo-${selectedItem.id}-${currentPhoto.id}`)"
+                :src="currentPhoto.url"
+                :alt="currentPhoto.title"
+                @click="zoomed = !zoomed"
+                @error="markImageBroken(`photo-${selectedItem.id}-${currentPhoto.id}`)"
+              />
+              <div v-else class="lightbox-fallback">
+                <q-icon name="broken_image" size="56px" color="grey-5" />
+                <div class="text-subtitle2 text-grey-4 q-mt-sm">Fotoğraf Dosyası Açılmıyor veya Bulunamadı</div>
+              </div>
             </div>
             <q-btn
               round
@@ -439,7 +503,15 @@
               :class="{ 'lb-thumb--active': idx === activePhotoIndex }"
               @click="activePhotoIndex = idx"
             >
-              <img :src="p.url" :alt="p.label" />
+              <img
+                v-if="p.url && !isImageBroken(`photo-${selectedItem.id}-${p.id}`)"
+                :src="p.url"
+                :alt="p.label"
+                @error="markImageBroken(`photo-${selectedItem.id}-${p.id}`)"
+              />
+              <div v-else class="lb-thumb-fallback">
+                <q-icon name="image_not_supported" size="20px" color="grey-5" />
+              </div>
               <span>{{ p.label }}</span>
             </div>
           </div>
@@ -450,16 +522,27 @@
 </template>
 
 <script setup>
-import { computed, ref, onMounted, nextTick } from 'vue'
+import { computed, ref, reactive, onMounted, nextTick } from 'vue'
 import { useQuasar } from 'quasar'
 import { useModerationStore } from '@/stores/moderationStore'
 
 const $q = useQuasar()
 const moderationStore = useModerationStore()
 
+// Yüklenemeyen / kırık görsellerin anahtar takibi
+const brokenImages = reactive({})
+
+function markImageBroken(key) {
+  brokenImages[key] = true
+}
+
+function isImageBroken(key) {
+  return Boolean(brokenImages[key])
+}
+
 const showRejectionPanel = ref(true)
 const selectedRejectReason = ref('Fotoğraflar kalitesiz / bulanık')
-const rejectCustomNote = ref('Makine tablasının ve seri numarasının net fotoğrafını ekleyiniz.')
+const rejectCustomNote = ref('')
 const rejectionBoxRef = ref(null)
 
 // Lightbox state
@@ -481,7 +564,7 @@ const filterLabel = computed(() => {
 })
 
 onMounted(() => {
-  moderationStore.fetchPendingListings(false)
+  moderationStore.fetchPendingListings()
 })
 
 function selectListingCard(id) {
@@ -489,12 +572,32 @@ function selectListingCard(id) {
 }
 
 function handleRefreshQueue() {
-  moderationStore.fetchPendingListings(true)
+  moderationStore.fetchPendingListings()
   $q.notify({
     type: 'info',
     message: 'Onay kuyruğu sunucu ile senkronize edildi.',
     position: 'top-right',
     timeout: 1800
+  })
+}
+
+function confirmClearNotifications() {
+  const notificationCount = moderationStore.actionHistory.length
+  if (notificationCount === 0) return
+
+  $q.dialog({
+    title: 'Bildirimleri Temizle',
+    message: `${notificationCount} moderasyon bildiriminin tamamı silinecek. Devam edilsin mi?`,
+    cancel: { label: 'Vazgeç', flat: true, noCaps: true },
+    ok: { label: 'Temizle', color: 'negative', unelevated: true, noCaps: true },
+    persistent: true
+  }).onOk(() => {
+    moderationStore.clearActionHistory()
+    $q.notify({
+      type: 'info',
+      message: 'Moderasyon bildirimleri temizlendi.',
+      position: 'top-right'
+    })
   })
 }
 
@@ -812,7 +915,18 @@ function nextPhoto() {
     width: 100%;
     height: 100%;
     object-fit: cover;
+    display: block;
   }
+}
+
+.thumb-fallback {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f1f5f9;
+  color: #94a3b8;
 }
 
 .queue-card-content {
@@ -1054,6 +1168,55 @@ function nextPhoto() {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  display: block;
+}
+
+.photo-fallback {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  background: #f8fafc;
+  color: #94a3b8;
+  padding-bottom: 14px;
+}
+
+.photo-fallback-text {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #64748b;
+}
+
+.no-photos-box {
+  border: 1.5px dashed #cbd5e1;
+  background: #f8fafc;
+  border-radius: 12px;
+  padding: 24px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.no-photos-icon {
+  color: #94a3b8;
+  margin-bottom: 6px;
+}
+
+.no-photos-title {
+  font-size: 13px;
+  font-weight: 800;
+  color: #334155;
+}
+
+.no-photos-sub {
+  font-size: 11.5px;
+  color: #64748b;
+  margin-top: 2px;
 }
 
 .photo-top-badge {
@@ -1425,5 +1588,33 @@ function nextPhoto() {
   &--active {
     border-color: #f07419;
   }
+}
+
+.lightbox-fallback {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 24px;
+}
+
+.lb-thumb-fallback {
+  width: 100%;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #0f172a;
+}
+
+.empty-detail-box {
+  padding: 80px 32px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  min-height: 420px;
 }
 </style>

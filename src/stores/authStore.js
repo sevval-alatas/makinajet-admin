@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { apiClient } from '@/services/api'
-import { parseJwt, extractRoleFromPayload, isJwtAdmin, createMockAdminJwt } from '@/utils/jwt'
+import { parseJwt, extractRoleFromPayload, isJwtAdmin } from '@/utils/jwt'
 
 const TOKEN_KEY = 'mj_admin_token'
 const USER_KEY = 'mj_admin_user'
@@ -18,12 +18,7 @@ export const useAuthStore = defineStore('auth', {
 
     return {
       token: savedToken,
-      user: savedUser || {
-        name: 'Burak Yılmaz',
-        email: 'admin@makinajet.com',
-        role: 'Admin',
-        title: 'Süper Yönetici (Role == Admin)'
-      },
+      user: savedUser,
       loading: false,
       error: null,
       apiConnected: false
@@ -73,7 +68,7 @@ export const useAuthStore = defineStore('auth', {
         let meProfile = null
 
         if (token) {
-          // Kullanıcı doğrudan Postman'deki Bearer Token'ı girdiyse /api/auth/me ile doğrula
+          // Kullanıcı doğrudan Bearer Token girdiyse /api/auth/me ile doğrula
           try {
             meProfile = await this.fetchMe(token)
             this.apiConnected = true
@@ -81,9 +76,13 @@ export const useAuthStore = defineStore('auth', {
             if (err.response && (err.response.status === 401 || err.response.status === 403)) {
               throw new Error('Girilen Bearer Token geçersiz veya süresi dolmuş (401 Unauthorized).')
             }
+            throw new Error(
+              err.response?.data?.message ||
+                'Sunucuya bağlanılamadı veya Bearer Token doğrulanamadı.'
+            )
           }
         } else {
-          // 1. POST /api/auth/login ile token almayı dene
+          // 1. POST /api/auth/login ile token al
           const cleanId = (identifier || '').trim()
           try {
             const response = await apiClient.post('/auth/login', {
@@ -103,35 +102,26 @@ export const useAuthStore = defineStore('auth', {
             meProfile = data?.user || null
             this.apiConnected = true
 
+            if (!token) {
+              throw new Error('Sunucudan geçerli bir oturum anahtarı (JWT) alınamadı.')
+            }
+
             // Token alındıysa GET /api/auth/me ile kullanıcı bilgilerini ve rolünü çek
-            if (token && !meProfile) {
+            if (!meProfile) {
               try {
                 meProfile = await this.fetchMe(token)
               } catch {
-                // /api/auth/me opsiyonel yedek
+                // /api/auth/me opsiyonel
               }
             }
           } catch (apiErr) {
-            // Eğer backend 400/401/403 döndürdüyse ve demo şifresi değilse hatayı göster
-            if (
-              apiErr.response &&
-              [400, 401, 403].includes(apiErr.response.status) &&
-              cleanId !== 'admin@makinajet.com'
-            ) {
-              const msg =
-                apiErr.response.data?.message ||
-                apiErr.response.data?.title ||
-                'Giriş bilgileri hatalı. Lütfen e-posta/telefon ve şifrenizi kontrol edin.'
-              throw new Error(msg)
-            }
-
-            // Demo/Varsayılan Admin yedek JWT
             this.apiConnected = false
-            token = createMockAdminJwt({
-              email: cleanId || 'admin@makinajet.com',
-              name: 'Burak Yılmaz',
-              hours: rememberMe ? 8 : 2
-            })
+            const msg =
+              apiErr.response?.data?.message ||
+              apiErr.response?.data?.title ||
+              apiErr.message ||
+              'Giriş başarısız. Lütfen sunucu bağlantısını ve giriş bilgilerinizi kontrol edin.'
+            throw new Error(msg)
           }
         }
 
@@ -139,23 +129,24 @@ export const useAuthStore = defineStore('auth', {
         const payload = parseJwt(token)
         const roleFromJwt = extractRoleFromPayload(payload)
         const roleFromMe = meProfile?.role || meProfile?.Role
-        const finalRole = roleFromMe || roleFromJwt || 'Admin'
+        const finalRole = roleFromMe || roleFromJwt
 
         if (String(finalRole).toLowerCase() !== 'admin' && String(finalRole) !== '1') {
           throw new Error(
-            `Yetkisiz Erişim: Hesap rolünüz (${finalRole}) 'Admin' değil. Bu portala yalnızca Role == Admin yetkisine sahip yöneticiler girebilir.`
+            `Yetkisiz Erişim: Hesap rolünüz (${finalRole || 'Tanımsız'}) 'Admin' değil. Bu portala yalnızca Role == Admin yetkisine sahip yöneticiler girebilir.`
           )
         }
 
         const adminUser = {
-          id: meProfile?.id || payload?.sub || 'admin-001',
+          id: meProfile?.id || payload?.sub || '',
           name:
             meProfile?.fullName ||
             meProfile?.name ||
             payload?.unique_name ||
             payload?.name ||
-            'Burak Yılmaz',
-          email: meProfile?.email || meProfile?.phone || identifier || 'admin@makinajet.com',
+            identifier ||
+            'Sistem Yöneticisi',
+          email: meProfile?.email || meProfile?.phone || identifier || '',
           phone: meProfile?.phone || null,
           role: 'Admin',
           title: 'Süper Yönetici (Role == Admin)'
@@ -185,6 +176,7 @@ export const useAuthStore = defineStore('auth', {
 
     logout() {
       this.token = null
+      this.user = null
       localStorage.removeItem(TOKEN_KEY)
       localStorage.removeItem(USER_KEY)
       sessionStorage.removeItem(TOKEN_KEY)

@@ -26,16 +26,13 @@ apiClient.interceptors.request.use(
   (error) => Promise.reject(error)
 )
 
-// 401/403 durumlarında oturum yönetimi (Demo imzalı JWT kullanılıyorsa oturumu silme)
+// 401 durumlarında oturum yönetimi
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response && error.response.status === 401) {
-      const token = localStorage.getItem('mj_admin_token') || sessionStorage.getItem('mj_admin_token') || ''
-      if (!token.endsWith('makinajet_v24_signature')) {
-        localStorage.removeItem('mj_admin_token')
-        sessionStorage.removeItem('mj_admin_token')
-      }
+      localStorage.removeItem('mj_admin_token')
+      sessionStorage.removeItem('mj_admin_token')
     }
     return Promise.reject(error)
   }

@@ -3,8 +3,10 @@ import { useAuthStore } from '@/stores/authStore'
 import MainLayout from '@/layouts/MainLayout.vue'
 import LoginPage from '@/pages/LoginPage.vue'
 import ModerationPage from '@/pages/ModerationPage.vue'
+import AllListingsPage from '@/pages/AllListingsPage.vue'
 import SettingsPage from '@/pages/SettingsPage.vue'
 import SystemPlaceholderPage from '@/pages/SystemPlaceholderPage.vue'
+import ChangePasswordPage from '@/pages/ChangePasswordPage.vue'
 
 const routes = [
   {
@@ -29,6 +31,18 @@ const routes = [
         meta: { requiresAdmin: true }
       },
       {
+        path: 'stores',
+        name: 'stores',
+        component: SystemPlaceholderPage,
+        meta: { requiresAdmin: true }
+      },
+      {
+        path: 'listings',
+        name: 'all-listings',
+        component: AllListingsPage,
+        meta: { requiresAdmin: true }
+      },
+      {
         path: 'settings',
         name: 'settings',
         component: SettingsPage,
@@ -50,6 +64,12 @@ const routes = [
         path: 'reports',
         name: 'reports',
         component: SystemPlaceholderPage,
+        meta: { requiresAdmin: true }
+      },
+      {
+        path: 'change-password',
+        name: 'change-password',
+        component: ChangePasswordPage,
         meta: { requiresAdmin: true }
       }
     ]

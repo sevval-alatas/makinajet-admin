@@ -1,46 +1,33 @@
 <template>
   <div class="mj-logo-box" :class="{ 'mj-logo-box--sm': size === 'sm' }">
     <div class="mj-logo-inner">
-      <!-- Turuncu Çark & Hız İkonu -->
-      <svg
-        class="mj-logo-svg"
-        viewBox="0 0 42 36"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-      >
-        <path
-          d="M19 6C12.3726 6 7 11.3726 7 18C7 24.6274 12.3726 30 19 30C23.4 30 27.2 27.6 29.3 24"
-          stroke="#f07419"
-          stroke-width="3.2"
-          stroke-linecap="round"
+      <!-- Uygulama İkonu (Yeni M & Dikiş İğnesi Logosu) -->
+      <div class="mj-logo-img-wrap">
+        <img
+          :src="appLogoUrl"
+          alt="MAKİNEM Uygulama Logosu"
+          class="mj-logo-img"
         />
-        <circle cx="19" cy="18" r="5" fill="#f07419" />
-        <!-- Çark Dişleri -->
-        <rect x="17.5" y="2" width="3" height="4" rx="1" fill="#f07419" />
-        <rect x="17.5" y="30" width="3" height="4" rx="1" fill="#f07419" />
-        <rect x="3" y="16.5" width="4" height="3" rx="1" fill="#f07419" />
-        <!-- Jet Hız Çizgileri -->
-        <path
-          d="M23 14H38L34 18H25L23 14Z"
-          fill="#f07419"
-        />
-        <path
-          d="M26 20H35L32 23H25L26 20Z"
-          fill="#38bdf8"
-        />
-      </svg>
+      </div>
 
+      <!-- Sağ: MAKİNEM & ENDÜSTRİYEL MAKİNE PAZARI -->
       <div class="mj-logo-text-wrap">
-        <div class="mj-logo-brand">
-          <span class="brand-makina">Makina</span><span class="brand-jet">Jet</span>
+        <div class="mj-logo-brand-row">
+          <span class="brand-makinem">MAKİNEM</span>
+          <span class="brand-orange-dot"></span>
         </div>
-        <div class="mj-logo-tagline">Tekstil Makinesinde Alım Satımın Hızlı Adresi</div>
+        <div class="mj-logo-tagline-row">
+          <span class="tagline-dash"></span>
+          <span class="mj-logo-tagline">ENDÜSTRİYEL MAKİNE PAZARI</span>
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
+import appLogoUrl from '@/assets/app-logo.jpg'
+
 defineProps({
   size: {
     type: String,
@@ -53,23 +40,39 @@ defineProps({
 .mj-logo-box {
   display: inline-flex;
   align-items: center;
-  background: #0a1420;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 8px;
-  padding: 6px 12px;
   user-select: none;
+  padding: 4px 6px;
 
   &--sm {
-    padding: 5px 10px;
-    .mj-logo-svg {
-      width: 28px;
-      height: 24px;
+    padding: 2px 4px;
+
+    .mj-logo-inner {
+      gap: 10px;
     }
-    .mj-logo-brand {
-      font-size: 16px;
+
+    .mj-logo-img-wrap {
+      width: 38px;
+      height: 38px;
+      border-radius: 9px;
     }
+
+    .brand-makinem {
+      font-size: 18px;
+      letter-spacing: 1.2px;
+    }
+
+    .brand-orange-dot {
+      width: 6px;
+      height: 6px;
+    }
+
+    .tagline-dash {
+      width: 11px;
+    }
+
     .mj-logo-tagline {
-      font-size: 6.5px;
+      font-size: 7.5px;
+      letter-spacing: 0.9px;
     }
   }
 }
@@ -77,41 +80,80 @@ defineProps({
 .mj-logo-inner {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
 }
 
-.mj-logo-svg {
-  width: 34px;
-  height: 28px;
+.mj-logo-img-wrap {
+  width: 44px;
+  height: 44px;
+  border-radius: 11px;
+  overflow: hidden;
   flex-shrink: 0;
+  background: #ea6412;
+  box-shadow: 0 4px 12px rgba(240, 116, 25, 0.32);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mj-logo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
 .mj-logo-text-wrap {
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
   line-height: 1.05;
 }
 
-.mj-logo-brand {
-  font-size: 18px;
-  font-weight: 800;
-  letter-spacing: -0.4px;
-  font-style: italic;
+.mj-logo-brand-row {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 3px;
+}
 
-  .brand-makina {
-    color: #ffffff;
-  }
-  .brand-jet {
-    color: #f07419;
-  }
+.brand-makinem {
+  font-size: 21px;
+  font-weight: 900;
+  color: #ffffff;
+  letter-spacing: 1.5px;
+}
+
+.brand-orange-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #f07419;
+  display: inline-block;
+  margin-top: 1px;
+  flex-shrink: 0;
+}
+
+.mj-logo-tagline-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.tagline-dash {
+  width: 14px;
+  height: 2px;
+  border-radius: 2px;
+  background: #f07419;
+  display: inline-block;
+  flex-shrink: 0;
 }
 
 .mj-logo-tagline {
-  font-size: 7px;
-  color: #94a3b8;
-  font-weight: 500;
-  letter-spacing: 0.1px;
-  margin-top: 2px;
+  font-size: 8.5px;
+  color: #cbd5e1;
+  font-weight: 700;
+  letter-spacing: 1.1px;
   white-space: nowrap;
 }
 </style>

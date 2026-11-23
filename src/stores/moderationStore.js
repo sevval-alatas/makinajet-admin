@@ -1,8 +1,29 @@
 import { defineStore } from 'pinia'
-import { apiClient } from '@/services/api'
-import { INITIAL_PENDING_LISTINGS, REJECTION_REASONS } from '@/services/mockData'
+import { apiClient, API_BASE_URL } from '@/services/api'
 
-const STORAGE_KEY = 'mj_admin_pending_listings_v24'
+const REJECTION_REASONS = [
+  'Fotoğraflar kalitesiz / bulanık',
+  'Eksik veya hatalı fiyat bilgisi',
+  'Kategori / marka-model uyumsuzluğu',
+  'Makine etiketi veya seri numarası okunmuyor',
+  'Açıklamada yasaklı iletişim / reklam bilgisi',
+  'Mükerrer veya sahte ilan şüphesi'
+]
+
+function resolveImageUrl(rawUrl) {
+  if (!rawUrl || typeof rawUrl !== 'string') return ''
+  const trimmed = rawUrl.trim()
+  if (!trimmed) return ''
+  if (
+    trimmed.startsWith('http://') ||
+    trimmed.startsWith('https://') ||
+    trimmed.startsWith('data:')
+  ) {
+    return trimmed
+  }
+  const base = API_BASE_URL.replace(/\/$/, '')
+  return trimmed.startsWith('/') ? `${base}${trimmed}` : `${base}/${trimmed}`
+}
 
 function formatRelativeTime(date) {
   const diffMs = Date.now() - date.getTime()
@@ -12,6 +33,40 @@ function formatRelativeTime(date) {
   if (diffHours < 24) return `${diffHours} saat önce`
   const diffDays = Math.floor(diffHours / 24)
   return `${diffDays} gün önce`
+}
+
+function normalizeStatus(rawStatus) {
+  const s = String(rawStatus ?? '').toLowerCase()
+  if (s === '0' || s === 'pending' || s.includes('bekliyor')) return 'Pending'
+  if (s === '1' || s === 'approved' || s === 'active' || s.includes('yayın')) return 'Approved'
+  if (s === '2' || s === 'rejected' || s.includes('red')) return 'Rejected'
+  if (s === '3' || s === 'sold' || s.includes('satıl')) return 'Sold'
+  if (
+    s === '4' ||
+    s === 'passive' ||
+    s === 'inactive' ||
+    s === 'expired' ||
+    s === 'removed' ||
+    s === 'deleted' ||
+    s === 'archived' ||
+    s.includes('kaldır') ||
+    s.includes('pasif')
+  ) {
+    return 'Passive'
+  }
+  return rawStatus || 'Pending'
+}
+
+function getStatusLabel(status) {
+  if (status === 'Approved') return 'Yayında'
+  if (status === 'Rejected') return 'Reddedildi (Arşiv)'
+  if (status === 'Sold') return 'Satıldı'
+  if (status === 'Passive') return 'Kaldırıldı / Pasif (Arşiv)'
+  return 'Onay Bekliyor'
+}
+
+export function isArchivedListingStatus(status) {
+  return status === 'Rejected' || status === 'Passive'
 }
 
 function mapApiListingToUi(dto) {
@@ -30,17 +85,16 @@ function mapApiListingToUi(dto) {
   const createdDate = dto.createdAt ? new Date(dto.createdAt) : new Date()
 
   const rawImages = Array.isArray(dto.images) ? dto.images : []
-  const mappedPhotos =
-    rawImages.length > 0
-      ? rawImages.map((img, idx) => ({
-          id: img.id || `img-${idx}`,
-          label: idx === 0 ? 'Kapak Fotoğrafı' : `Fotoğraf ${idx + 1}`,
-          topBadge: img.isCover || idx === 0 ? 'Kapak Fotoğrafı' : null,
-          resolution: 'Orijinal Boyut • Net',
-          title: `${dto.title} — Fotoğraf ${idx + 1}`,
-          url: img.imageUrl
-        }))
-      : INITIAL_PENDING_LISTINGS[0].photos
+  const mappedPhotos = rawImages.map((img, idx) => ({
+    id: img.id || `img-${idx}`,
+    label: idx === 0 ? 'Kapak Fotoğrafı' : `Fotoğraf ${idx + 1}`,
+    topBadge: img.isCover || idx === 0 ? 'Kapak Fotoğrafı' : null,
+    resolution: 'Orijinal Boyut • Net',
+    title: `${dto.title} — Fotoğraf ${idx + 1}`,
+    url: resolveImageUrl(img.imageUrl || img.url)
+  }))
+
+  const normalizedStatus = normalizeStatus(dto.status ?? dto.Status)
 
   return {
     id: dto.id,
@@ -52,12 +106,13 @@ function mapApiListingToUi(dto) {
     sellerTaxNo: dto.seller?.city ? `Şehir: ${dto.seller.city}` : 'Doğrulanmış Üye',
     sellerPhone: dto.contactPhone || dto.seller?.phone || '-',
     sellerVerified: true,
-    sellerApprovedCount: 1,
-    sellerComplaintCount: 0,
+    sellerApprovedCount: dto.seller?.approvedListingCount ?? 0,
+    sellerComplaintCount: dto.seller?.complaintCount ?? 0,
     price: priceNum,
     formattedPrice,
     condition: conditionText,
     conditionDetail: isNew ? 'Sıfır Fabrika Çıkışlı' : 'İkinci El',
+    categoryId: dto.categoryId ?? dto.CategoryId ?? null,
     category: dto.categoryName || 'Tekstil Makinesi',
     brand: dto.brand || '-',
     model: dto.model || '-',
@@ -73,46 +128,44 @@ function mapApiListingToUi(dto) {
       hour: '2-digit',
       minute: '2-digit'
     }),
-    status: 'Pending',
+    status: normalizedStatus,
+    statusLabel: getStatusLabel(normalizedStatus),
+    rejectReason: dto.rejectReason || dto.rejectionReason || null,
     isFeatured: Boolean(dto.isFeatured),
     featuredUntil: dto.featuredUntil || null,
+    hasDoping: Boolean(dto.hasDoping ?? dto.isDoping),
+    dopingUntil: dto.dopingUntil || null,
+    isBoldTitle: Boolean(dto.isBoldTitle ?? dto.hasBoldTitle),
+    boldTitleUntil: dto.boldTitleUntil || null,
+    totalPaidAmountTl: Number(dto.totalPaidAmountTl ?? 0),
     description: dto.description || 'Açıklama metni bulunmuyor.',
-    thumbnail: mappedPhotos[0]?.url || INITIAL_PENDING_LISTINGS[0].thumbnail,
+    thumbnail: mappedPhotos[0]?.url || '',
     photos: mappedPhotos,
     isFromBackend: true
   }
 }
 
-function loadInitialListings() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (raw) {
-      const parsed = JSON.parse(raw)
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed
-      }
-    }
-  } catch {
-    // ignore
-  }
-  return structuredClone(INITIAL_PENDING_LISTINGS)
-}
-
 export const useModerationStore = defineStore('moderation', {
-  state: () => {
-    const initial = loadInitialListings()
-    return {
-      listings: initial,
-      selectedId: initial[0]?.id || null,
-      searchQuery: '',
-      conditionFilter: 'ALL', // 'ALL' | 'Sıfır' | 'İkinci El'
-      loading: false,
-      rejectionReasons: REJECTION_REASONS,
-      totalCountFromApi: null,
-      dashboardStats: null,
-      actionHistory: []
-    }
-  },
+  state: () => ({
+    listings: [],
+    selectedId: null,
+    searchQuery: '',
+    conditionFilter: 'ALL', // 'ALL' | 'Sıfır' | 'İkinci El'
+    loading: false,
+    rejectionReasons: REJECTION_REASONS,
+    totalCountFromApi: null,
+    dashboardStats: null,
+    actionHistory: [],
+
+    // Tüm İlanlar sayfası state'i
+    allListings: [],
+    allListingsTotalCount: 0,
+    allListingsLoading: false,
+    allListingsStatusFilter: 'ALL', // 'ALL' | 'Pending' | 'Approved' | 'Rejected' | 'Sold' | 'Passive'
+    allListingsSearch: '',
+    allListingsPage: 1,
+    allListingsPageSize: 50
+  }),
 
   getters: {
     pendingListings(state) {
@@ -148,18 +201,13 @@ export const useModerationStore = defineStore('moderation', {
       if (typeof state.totalCountFromApi === 'number') {
         return state.totalCountFromApi
       }
-      const activeCount = state.listings.filter((i) => i.status === 'Pending').length
-      return activeCount > 0 ? activeCount + 8 : 0
+      return state.listings.filter((i) => i.status === 'Pending').length
     }
   },
 
   actions: {
-    persist() {
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(this.listings))
-      } catch {
-        // ignore
-      }
+    clearActionHistory() {
+      this.actionHistory = []
     },
 
     selectListing(id) {
@@ -186,7 +234,7 @@ export const useModerationStore = defineStore('moderation', {
      * [HttpGet("listings")]
      * GetListings([FromQuery] ListingStatus? status, [FromQuery] string? search, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
      */
-    async fetchPendingListings(resetDemo = false) {
+    async fetchPendingListings() {
       this.loading = true
       try {
         const res = await apiClient.get('/admin/listings', {
@@ -201,24 +249,64 @@ export const useModerationStore = defineStore('moderation', {
         const pagedData = res.data
         const rawItems = pagedData?.items || pagedData?.Items || []
 
-        if (Array.isArray(rawItems) && rawItems.length > 0) {
+        if (Array.isArray(rawItems)) {
           this.listings = rawItems.map((dto) => mapApiListingToUi(dto))
           this.totalCountFromApi = pagedData.totalCount ?? pagedData.TotalCount ?? this.listings.length
           this.selectedId = this.listings[0]?.id || null
-          this.persist()
-          return
+        } else {
+          this.listings = []
+          this.totalCountFromApi = 0
+          this.selectedId = null
         }
       } catch {
-        // Backend 401 döndürürse veya boşsa demo listesini koru
+        this.listings = []
+        this.totalCountFromApi = 0
+        this.selectedId = null
       } finally {
         this.loading = false
       }
+    },
 
-      if (resetDemo || this.pendingListings.length === 0) {
-        this.listings = structuredClone(INITIAL_PENDING_LISTINGS)
-        this.totalCountFromApi = null
-        this.selectedId = this.listings[0]?.id || null
-        this.persist()
+    /**
+     * Sistemdeki tüm ilanları (veya seçili duruma göre) getirir:
+     * GET /api/admin/listings?status=...&search=...&page=...&pageSize=...
+     */
+    async fetchAllListings() {
+      this.allListingsLoading = true
+      try {
+        // 'ALL' ve 'ARCHIVE' modlarında tüm kayıtları çekip aktif/arşiv ayrımını uygula
+        const statusParam =
+          this.allListingsStatusFilter &&
+          this.allListingsStatusFilter !== 'ALL' &&
+          this.allListingsStatusFilter !== 'ARCHIVE'
+            ? this.allListingsStatusFilter
+            : undefined
+
+        const res = await apiClient.get('/admin/listings', {
+          params: {
+            status: statusParam,
+            search: this.allListingsSearch.trim() || undefined,
+            page: this.allListingsPage,
+            pageSize: 100
+          }
+        })
+
+        const pagedData = res.data
+        const rawItems = pagedData?.items || pagedData?.Items || (Array.isArray(pagedData) ? pagedData : [])
+
+        if (Array.isArray(rawItems)) {
+          this.allListings = rawItems.map((dto) => mapApiListingToUi(dto))
+          this.allListingsTotalCount =
+            pagedData?.totalCount ?? pagedData?.TotalCount ?? this.allListings.length
+        } else {
+          this.allListings = []
+          this.allListingsTotalCount = 0
+        }
+      } catch {
+        this.allListings = []
+        this.allListingsTotalCount = 0
+      } finally {
+        this.allListingsLoading = false
       }
     },
 
@@ -228,31 +316,41 @@ export const useModerationStore = defineStore('moderation', {
      */
     async approveListing(id) {
       const target = this.listings.find((item) => item.id === id)
-      if (!target) return
+      const allTarget = this.allListings.find((item) => item.id === id)
+      const refItem = target || allTarget
 
-      if (target.isFromBackend) {
-        try {
-          await apiClient.patch(`/admin/listings/${id}/approve`)
-        } catch (err) {
-          console.warn('Approve API uyarısı:', err)
-        }
+      if (refItem && isArchivedListingStatus(refItem.status)) {
+        throw new Error('Arşivdeki (reddedilen veya kaldırılan) ilanlar tekrar onaylanamaz.')
       }
 
-      target.status = 'Approved'
+      await apiClient.patch(`/admin/listings/${id}/approve`)
+
+      if (target) {
+        target.status = 'Approved'
+        target.statusLabel = 'Yayında'
+      }
+      if (allTarget) {
+        allTarget.status = 'Approved'
+        allTarget.statusLabel = 'Yayında'
+      }
+
       if (typeof this.totalCountFromApi === 'number' && this.totalCountFromApi > 0) {
         this.totalCountFromApi -= 1
       }
 
-      this.actionHistory.unshift({
-        id: Date.now(),
-        code: target.code,
-        title: target.title,
-        action: 'Onaylandı',
-        timestamp: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
-      })
+      if (refItem) {
+        this.actionHistory.unshift({
+          id: Date.now(),
+          code: refItem.code,
+          title: refItem.title,
+          action: 'Onaylandı',
+          timestamp: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
+        })
+      }
 
-      this.selectNextAvailable(id)
-      this.persist()
+      if (target) {
+        this.selectNextAvailable(id)
+      }
     },
 
     /**
@@ -261,39 +359,46 @@ export const useModerationStore = defineStore('moderation', {
      * Body: RejectListingRequestDto { RejectReason }
      */
     async rejectListing(id, { reason, note }) {
-      const target = this.listings.find((item) => item.id === id)
-      if (!target) return
-
       const combinedReason = [reason, note?.trim()].filter(Boolean).join(' — ')
 
-      if (target.isFromBackend) {
-        try {
-          await apiClient.patch(`/admin/listings/${id}/reject`, {
-            rejectReason: combinedReason
-          })
-        } catch (err) {
-          console.warn('Reject API uyarısı:', err)
-        }
-      }
+      await apiClient.patch(`/admin/listings/${id}/reject`, {
+        rejectReason: combinedReason
+      })
 
-      target.status = 'Rejected'
-      target.rejectionReason = reason
-      target.rejectionNote = note
+      const target = this.listings.find((item) => item.id === id)
+      const allTarget = this.allListings.find((item) => item.id === id)
+
+      if (target) {
+        target.status = 'Rejected'
+        target.statusLabel = 'Reddedildi'
+        target.rejectionReason = reason
+        target.rejectionNote = note
+        target.rejectReason = combinedReason
+      }
+      if (allTarget) {
+        allTarget.status = 'Rejected'
+        allTarget.statusLabel = 'Reddedildi'
+        allTarget.rejectReason = combinedReason
+      }
 
       if (typeof this.totalCountFromApi === 'number' && this.totalCountFromApi > 0) {
         this.totalCountFromApi -= 1
       }
 
-      this.actionHistory.unshift({
-        id: Date.now(),
-        code: target.code,
-        title: target.title,
-        action: `Reddedildi (${reason})`,
-        timestamp: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
-      })
+      const refItem = target || allTarget
+      if (refItem) {
+        this.actionHistory.unshift({
+          id: Date.now(),
+          code: refItem.code,
+          title: refItem.title,
+          action: `Reddedildi (${reason})`,
+          timestamp: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
+        })
+      }
 
-      this.selectNextAvailable(id)
-      this.persist()
+      if (target) {
+        this.selectNextAvailable(id)
+      }
     },
 
     /**
@@ -303,23 +408,75 @@ export const useModerationStore = defineStore('moderation', {
      */
     async toggleFeatureListing(id, durationDays = 7) {
       const target = this.listings.find((item) => item.id === id)
-      if (!target) return false
+      const allTarget = this.allListings.find((item) => item.id === id)
+      const refItem = target || allTarget
+      if (!refItem) return false
 
-      const nextFeatured = !target.isFeatured
-
-      if (target.isFromBackend) {
-        try {
-          await apiClient.patch(`/admin/listings/${id}/set-featured`, {
-            durationDays: nextFeatured ? durationDays : 0
-          })
-        } catch (err) {
-          console.warn('Set-featured API uyarısı:', err)
-        }
+      if (isArchivedListingStatus(refItem.status)) {
+        throw new Error('Arşivdeki (reddedilen veya kaldırılan) ilanlar vitrine eklenemez.')
       }
 
-      target.isFeatured = nextFeatured
-      this.persist()
-      return target.isFeatured
+      const nextFeatured = !refItem.isFeatured
+
+      await apiClient.patch(`/admin/listings/${id}/set-featured`, {
+        durationDays: nextFeatured ? durationDays : 0
+      })
+
+      if (target) target.isFeatured = nextFeatured
+      if (allTarget) allTarget.isFeatured = nextFeatured
+      return nextFeatured
+    },
+
+    /**
+     * AdminController:
+     * [HttpPatch("listings/{id:guid}/set-doping")]
+     * Body: { durationDays }
+     */
+    async toggleDopingListing(id, durationDays = 7) {
+      const target = this.listings.find((item) => item.id === id)
+      const allTarget = this.allListings.find((item) => item.id === id)
+      const refItem = target || allTarget
+      if (!refItem) return false
+
+      if (isArchivedListingStatus(refItem.status)) {
+        throw new Error('Arşivdeki (reddedilen veya kaldırılan) ilanlara doping eklenemez.')
+      }
+
+      const nextDoping = !refItem.hasDoping
+
+      await apiClient.patch(`/admin/listings/${id}/set-doping`, {
+        durationDays: nextDoping ? durationDays : 0
+      })
+
+      if (target) target.hasDoping = nextDoping
+      if (allTarget) allTarget.hasDoping = nextDoping
+      return nextDoping
+    },
+
+    /**
+     * AdminController:
+     * [HttpPatch("listings/{id:guid}/set-bold-title")]
+     * Body: { durationDays }
+     */
+    async toggleBoldTitleListing(id, durationDays = 7) {
+      const target = this.listings.find((item) => item.id === id)
+      const allTarget = this.allListings.find((item) => item.id === id)
+      const refItem = target || allTarget
+      if (!refItem) return false
+
+      if (isArchivedListingStatus(refItem.status)) {
+        throw new Error('Arşivdeki (reddedilen veya kaldırılan) ilanlara kalın yazı eklenemez.')
+      }
+
+      const nextBold = !refItem.isBoldTitle
+
+      await apiClient.patch(`/admin/listings/${id}/set-bold-title`, {
+        durationDays: nextBold ? durationDays : 0
+      })
+
+      if (target) target.isBoldTitle = nextBold
+      if (allTarget) allTarget.isBoldTitle = nextBold
+      return nextBold
     },
 
     selectNextAvailable(removedId) {
